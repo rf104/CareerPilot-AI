@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../lib/useAuth";
 
 export default function SettingsPage() {
-  const { user, updateProfile, logout } = useAuth();
+  const { user, updateProfile, changePassword, deleteAccount } = useAuth();
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -13,38 +13,61 @@ export default function SettingsPage() {
   const [toast, setToast] = useState(null);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
 
+  // The hook hydrates asynchronously; sync the form once the user arrives.
+  useEffect(() => {
+    if (user) {
+      setName(user.name);
+      setEmail(user.email);
+    }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const showToast = (message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    updateProfile({ name, email });
-    showToast("Profile updated successfully!");
+    try {
+      const { emailChangePending } = await updateProfile({ name, email });
+      showToast(
+        emailChangePending
+          ? "Profile updated. Check your new email to confirm the change."
+          : "Profile updated successfully!"
+      );
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   };
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (newPassword.length < 6) {
-      showToast("Password must be at least 6 characters.", "error");
+    if (newPassword.length < 8) {
+      showToast("Password must be at least 8 characters.", "error");
       return;
     }
     if (newPassword !== confirmPassword) {
       showToast("Passwords do not match.", "error");
       return;
     }
-    // Mock password change
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    showToast("Password changed successfully!");
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      showToast("Password changed successfully!");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   };
 
-  const handleDeleteAccount = () => {
-    // Mock delete
-    setConfirmDeleteAccount(false);
-    logout();
+  const handleDeleteAccount = async () => {
+    try {
+      await deleteAccount();
+    } catch (err) {
+      setConfirmDeleteAccount(false);
+      showToast(err.message, "error");
+    }
   };
 
   const initials = user?.name
@@ -195,7 +218,7 @@ export default function SettingsPage() {
               id="settings-new-password"
               type="password"
               className="form-input"
-              placeholder="Min. 6 characters"
+              placeholder="Min. 8 characters"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required

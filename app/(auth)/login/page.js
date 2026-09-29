@@ -1,18 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../lib/useAuth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithProvider } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("error")) {
+      setError("Authentication failed or the link expired. Please try again.");
+    }
+  }, []);
+
+  const handleProvider = async (provider) => {
+    setError("");
+    try {
+      await loginWithProvider(provider);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,7 +35,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push("/dashboard");
+      router.replace("/dashboard");
+      router.refresh();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -77,12 +93,12 @@ export default function LoginPage() {
               <label htmlFor="login-password" className="form-label" style={{ marginBottom: 0 }}>
                 Password
               </label>
-              <a
-                href="#"
+              <Link
+                href="/forgot-password"
                 className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
               >
                 Forgot password?
-              </a>
+              </Link>
             </div>
             <div className="relative">
               <input
@@ -117,15 +133,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Remember me */}
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              className="w-4 h-4 rounded border-slate-600 bg-transparent accent-violet-500"
-            />
-            <span className="text-sm text-slate-400">Remember me</span>
-          </label>
-
           {/* Submit */}
           <button
             type="submit"
@@ -158,6 +165,8 @@ export default function LoginPage() {
         {/* Social logins */}
         <div className="grid grid-cols-2 gap-3">
           <button
+            type="button"
+            onClick={() => handleProvider("google")}
             id="login-google-btn"
             className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-slate-700/50 text-sm text-slate-300 hover:bg-slate-800/50 hover:border-slate-600 transition-all"
           >
@@ -170,6 +179,8 @@ export default function LoginPage() {
             Google
           </button>
           <button
+            type="button"
+            onClick={() => handleProvider("github")}
             id="login-github-btn"
             className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-slate-700/50 text-sm text-slate-300 hover:bg-slate-800/50 hover:border-slate-600 transition-all"
           >

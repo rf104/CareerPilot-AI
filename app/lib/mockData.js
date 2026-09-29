@@ -256,6 +256,12 @@ export function clearUser() {
   localStorage.removeItem(STORAGE_KEYS.USER);
 }
 
+// Wipe all locally cached data (called on logout so users never see each other's data).
+export function clearLocalData() {
+  if (typeof window === "undefined") return;
+  Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
+}
+
 // ---- Applications ----
 export function getApplications() {
   return safeGet(STORAGE_KEYS.APPLICATIONS, SEED_APPLICATIONS);

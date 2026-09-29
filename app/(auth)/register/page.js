@@ -7,7 +7,8 @@ import { useAuth } from "../../lib/useAuth";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register } = useAuth();
+  const { register, loginWithProvider } = useAuth();
+  const [notice, setNotice] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,12 +18,21 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const handleProvider = async (provider) => {
+    setError("");
+    try {
+      await loginWithProvider(provider);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     if (password !== confirmPassword) {
@@ -36,8 +46,13 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await register(name, email, password);
-      router.push("/dashboard");
+      const { needsConfirmation } = await register(name.trim(), email.trim(), password);
+      if (needsConfirmation) {
+        setNotice(`We sent a confirmation link to ${email.trim()}. Click it to activate your account, then sign in.`);
+      } else {
+        router.replace("/dashboard");
+        router.refresh();
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -66,6 +81,12 @@ export default function RegisterPage() {
         {error && (
           <div className="mb-6 p-3 rounded-lg text-sm text-red-400 bg-red-500/10 border border-red-500/20">
             {error}
+          </div>
+        )}
+
+        {notice && (
+          <div className="mb-6 p-3 rounded-lg text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
+            {notice}
           </div>
         )}
 
@@ -115,11 +136,11 @@ export default function RegisterPage() {
                 id="register-password"
                 type={showPassword ? "text" : "password"}
                 className="form-input pr-11"
-                placeholder="Min. 6 characters"
+                placeholder="Min. 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
                 autoComplete="new-password"
               />
               <button
@@ -213,6 +234,8 @@ export default function RegisterPage() {
         {/* Social logins */}
         <div className="grid grid-cols-2 gap-3">
           <button
+            type="button"
+            onClick={() => handleProvider("google")}
             id="register-google-btn"
             className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-slate-700/50 text-sm text-slate-300 hover:bg-slate-800/50 hover:border-slate-600 transition-all"
           >
@@ -225,6 +248,8 @@ export default function RegisterPage() {
             Google
           </button>
           <button
+            type="button"
+            onClick={() => handleProvider("github")}
             id="register-github-btn"
             className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-slate-700/50 text-sm text-slate-300 hover:bg-slate-800/50 hover:border-slate-600 transition-all"
           >
