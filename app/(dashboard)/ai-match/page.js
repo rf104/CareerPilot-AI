@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { fetchResumes } from "../../lib/resumesApi";
 import {
-  getResumes,
   getApplications,
   MOCK_AI_MATCH,
   saveAIResult,
@@ -90,7 +90,7 @@ export default function AIMatchPage() {
   const [expandedRec, setExpandedRec] = useState(null);
 
   useEffect(() => {
-    setResumes(getResumes());
+    fetchResumes().then(setResumes).catch(() => {});
     setApplications(getApplications());
   }, []);
 

@@ -1,18 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import {
-  getResumes,
-  addResume,
-  deleteResume,
-  SEED_RESUME,
-} from "../../lib/mockData";
-
-// Mock skills data for newly uploaded resumes
-const MOCK_UPLOAD_SKILLS = [
-  "JavaScript", "React", "HTML/CSS", "Node.js", "Git",
-  "TypeScript", "REST APIs", "SQL", "Python", "Agile",
-];
+import { fetchResumes, fetchResume, uploadResume, removeResume } from "../../lib/resumesApi";
 
 export default function ResumePage() {
   const [resumes, setResumes] = useState([]);
@@ -24,11 +13,33 @@ export default function ResumePage() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const fileInputRef = useRef(null);
 
+  const [loadingList, setLoadingList] = useState(true);
+
+  // The list omits raw text (kept light); it is fetched when a resume is selected.
   useEffect(() => {
-    const loaded = getResumes();
-    setResumes(loaded);
-    if (loaded.length > 0) setSelectedResume(loaded[0]);
+    fetchResumes()
+      .then((loaded) => {
+        setResumes(loaded);
+        if (loaded.length > 0) selectResume(loaded[0]);
+      })
+      .catch((err) => showToast(err.message, "error"))
+      .finally(() => setLoadingList(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const selectResume = async (resume) => {
+    setSelectedResume(resume);
+    if (resume.extractedText !== undefined) return;
+    try {
+      const full = await fetchResume(resume.id);
+      {
+        setResumes((prev) => prev.map((r) => (r.id === full.id ? full : r)));
+        setSelectedResume((cur) => (cur?.id === full.id ? full : cur));
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  };
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -42,40 +53,30 @@ export default function ResumePage() {
       return;
     }
 
-    setUploading(true);
-    setUploadProgress(0);
-
-    // Simulate upload progress
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise((r) => setTimeout(r, 150));
-      setUploadProgress(i);
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("File is too large (max 5 MB).", "error");
+      return;
     }
 
-    // Simulate processing delay
-    await new Promise((r) => setTimeout(r, 500));
+    setUploading(true);
+    setUploadProgress(5);
+    // Analysis time is unknown, so ease toward 90% until the server responds.
+    const ticker = setInterval(() => setUploadProgress((p) => (p < 90 ? p + Math.max(1, (90 - p) / 12) : p)), 300);
 
-    const newResume = {
-      filename: file.name,
-      fileSize: `${(file.size / 1024).toFixed(0)} KB`,
-      skills: MOCK_UPLOAD_SKILLS,
-      extractedText: `Resume content extracted from ${file.name}.\n\nThis is a mock extraction. When the backend is connected, the actual PDF text will be parsed and displayed here.\n\nDetected sections: Summary, Experience, Education, Skills, Projects.`,
-      sections: {
-        summary: "Extracted summary will appear here when backend is connected.",
-        experience: [
-          { title: "Developer", company: "Tech Company", period: "2023 – Present", location: "Remote" },
-        ],
-        education: [
-          { degree: "B.S. Computer Science", school: "University", year: "2023" },
-        ],
-      },
-    };
-
-    const { updated, newResume: created } = addResume(newResume);
-    setResumes(updated);
-    setSelectedResume(created);
-    setUploading(false);
-    setUploadProgress(0);
-    showToast("Resume uploaded and processed successfully!");
+    try {
+      const created = await uploadResume(file);
+      setUploadProgress(100);
+      setResumes((prev) => [created, ...prev]);
+      setSelectedResume(created);
+      showToast("Resume uploaded and analyzed successfully!");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      clearInterval(ticker);
+      setUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handleDrop = (e) => {
@@ -85,14 +86,20 @@ export default function ResumePage() {
     handleUpload(file);
   };
 
-  const handleDeleteResume = (id) => {
-    const updated = deleteResume(id);
-    setResumes(updated);
-    if (selectedResume?.id === id) {
-      setSelectedResume(updated[0] || null);
-    }
+  const handleDeleteResume = async (id) => {
     setConfirmDelete(null);
-    showToast("Resume deleted.");
+    try {
+      await removeResume(id);
+      const updated = resumes.filter((r) => r.id !== id);
+      setResumes(updated);
+      if (selectedResume?.id === id) {
+        if (updated[0]) selectResume(updated[0]);
+        else setSelectedResume(null);
+      }
+      showToast("Resume deleted.");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   };
 
   return (
@@ -139,7 +146,7 @@ export default function ResumePage() {
                     }}
                   />
                 </div>
-                <span className="text-xs text-slate-500">{uploadProgress}%</span>
+                <span className="text-xs text-slate-500">{Math.round(uploadProgress)}%</span>
               </div>
             ) : (
               <>
@@ -151,7 +158,7 @@ export default function ResumePage() {
                 <p className="text-slate-300 font-medium text-sm mb-1">
                   Drop your PDF here or click to browse
                 </p>
-                <p className="text-slate-600 text-xs">Supports PDF files only</p>
+                <p className="text-slate-600 text-xs">PDF only, up to 5 MB. Only the text is stored, not the file.</p>
               </>
             )}
           </div>
@@ -165,7 +172,7 @@ export default function ResumePage() {
               {resumes.map((resume) => (
                 <button
                   key={resume.id}
-                  onClick={() => setSelectedResume(resume)}
+                  onClick={() => selectResume(resume)}
                   className={`w-full text-left p-4 rounded-xl border transition-all ${
                     selectedResume?.id === resume.id
                       ? "bg-violet-500/10 border-violet-500/30"
@@ -204,7 +211,7 @@ export default function ResumePage() {
                 </button>
               ))}
 
-              {resumes.length === 0 && (
+              {resumes.length === 0 && !loadingList && (
                 <p className="text-sm text-slate-600 text-center py-6">
                   No resumes uploaded yet. Upload your first PDF above.
                 </p>
@@ -226,6 +233,9 @@ export default function ResumePage() {
                   Detected Skills
                 </h3>
                 <div className="flex flex-wrap gap-2">
+                  {selectedResume.skills.length === 0 && (
+                    <p className="text-sm text-slate-500">No known skills detected in this resume.</p>
+                  )}
                   {selectedResume.skills.map((skill) => (
                     <span key={skill} className="skill-tag skill-tag-neutral">
                       {skill}
@@ -266,7 +276,7 @@ export default function ResumePage() {
                           <div key={i} className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/20">
                             <p className="text-sm font-medium text-white">{exp.title}</p>
                             <p className="text-xs text-slate-400 mt-0.5">
-                              {exp.company} • {exp.period} • {exp.location}
+                              {[exp.company, exp.period, exp.location].filter(Boolean).join(" • ")}
                             </p>
                           </div>
                         ))}
@@ -283,7 +293,7 @@ export default function ResumePage() {
                           <div key={i} className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/20">
                             <p className="text-sm font-medium text-white">{edu.degree}</p>
                             <p className="text-xs text-slate-400 mt-0.5">
-                              {edu.school} • {edu.year}
+                              {[edu.school, edu.year].filter(Boolean).join(" • ")}
                             </p>
                           </div>
                         ))}
@@ -305,7 +315,7 @@ export default function ResumePage() {
                   Extracted Text
                 </h3>
                 <pre className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap font-sans bg-slate-800/30 rounded-lg p-4 max-h-96 overflow-y-auto border border-slate-700/20">
-                  {selectedResume.extractedText}
+                  {selectedResume.extractedText ?? "Loading..."}
                 </pre>
               </div>
             </div>

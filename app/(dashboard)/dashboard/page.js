@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { fetchResumes } from "../../lib/resumesApi";
 import { useAuth } from "../../lib/useAuth";
-import { getApplications, getResumes, STATUS_COLORS } from "../../lib/mockData";
+import { getApplications, STATUS_COLORS } from "../../lib/mockData";
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -13,8 +14,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setApplications(getApplications());
-    setResumes(getResumes());
     setMounted(true);
+    fetchResumes().then(setResumes).catch(() => {});
   }, []);
 
   const interviewCount = applications.filter((a) => a.status === "Interview").length;
