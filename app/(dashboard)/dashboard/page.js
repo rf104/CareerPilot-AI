@@ -4,16 +4,20 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { fetchResumes } from "../../lib/resumesApi";
 import { useAuth } from "../../lib/useAuth";
-import { getApplications, STATUS_COLORS } from "../../lib/mockData";
+import { STATUS_COLORS } from "../../lib/mockData";
+import { fetchApplications } from "../../lib/applicationsApi";
+import { fetchMatchHistory } from "../../lib/matchApi";
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [applications, setApplications] = useState([]);
   const [resumes, setResumes] = useState([]);
+  const [matches, setMatches] = useState([]);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setApplications(getApplications());
+    fetchApplications().then(setApplications).catch(() => {});
+    fetchMatchHistory().then(setMatches).catch(() => {});
     setMounted(true);
     fetchResumes().then(setResumes).catch(() => {});
   }, []);
@@ -31,6 +35,10 @@ export default function DashboardPage() {
     month: "long",
     day: "numeric",
   });
+
+  const avgMatch = matches.length
+    ? Math.round(matches.reduce((sum, m) => sum + m.score, 0) / matches.length)
+    : null;
 
   const stats = [
     {
@@ -59,7 +67,7 @@ export default function DashboardPage() {
     },
     {
       label: "AI Match Score",
-      value: "78%",
+      value: avgMatch === null ? "—" : `${avgMatch}%`,
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8" />

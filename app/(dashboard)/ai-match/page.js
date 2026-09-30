@@ -2,11 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchResumes } from "../../lib/resumesApi";
-import {
-  getApplications,
-  MOCK_AI_MATCH,
-  saveAIResult,
-} from "../../lib/mockData";
+import { fetchApplications } from "../../lib/applicationsApi";
+import { analyzeMatch } from "../../lib/matchApi";
 
 // Circular progress component
 function ProgressRing({ value, size = 140, strokeWidth = 10, color = "#a78bfa" }) {
@@ -87,47 +84,38 @@ export default function AIMatchPage() {
   const [pastedJD, setPastedJD] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
   const [expandedRec, setExpandedRec] = useState(null);
 
   useEffect(() => {
     fetchResumes().then(setResumes).catch(() => {});
-    setApplications(getApplications());
+    fetchApplications().then(setApplications).catch(() => {});
   }, []);
 
   const canAnalyze =
     selectedResume &&
     ((jdSource === "saved" && selectedJob) || (jdSource === "paste" && pastedJD.trim()));
 
-  const handleAnalyze = useCallback(async () => {
+  const handleAnalyze = useCallback(async (refresh = false) => {
     if (!canAnalyze) return;
 
     setAnalyzing(true);
     setResult(null);
+    setError("");
 
-    // Simulate AI processing delay (2-4 seconds)
-    await new Promise((r) => setTimeout(r, 2500));
-
-    // Use mock result with slight randomization
-    const score = MOCK_AI_MATCH.overallScore + Math.floor(Math.random() * 10 - 5);
-    const mockResult = {
-      ...MOCK_AI_MATCH,
-      overallScore: Math.max(40, Math.min(98, score)),
-      breakdown: {
-        skills: Math.max(40, Math.min(98, MOCK_AI_MATCH.breakdown.skills + Math.floor(Math.random() * 10 - 5))),
-        experience: Math.max(40, Math.min(98, MOCK_AI_MATCH.breakdown.experience + Math.floor(Math.random() * 10 - 5))),
-        education: Math.max(40, Math.min(98, MOCK_AI_MATCH.breakdown.education + Math.floor(Math.random() * 10 - 5))),
-        keywords: Math.max(40, Math.min(98, MOCK_AI_MATCH.breakdown.keywords + Math.floor(Math.random() * 10 - 5))),
-      },
-      resumeName: resumes.find((r) => r.id === selectedResume)?.filename || "Resume",
-      jobTitle: jdSource === "saved"
-        ? applications.find((a) => a.id === selectedJob)?.position || "Job"
-        : "Custom Job Description",
-    };
-
-    saveAIResult(mockResult);
-    setResult(mockResult);
-    setAnalyzing(false);
-  }, [canAnalyze, selectedResume, selectedJob, jdSource, resumes, applications]);
+    try {
+      const res = await analyzeMatch(
+        jdSource === "saved"
+          ? { resumeId: selectedResume, applicationId: selectedJob, refresh }
+          : { resumeId: selectedResume, jobDescription: pastedJD, refresh }
+      );
+      setResult(res);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [canAnalyze, selectedResume, selectedJob, jdSource, pastedJD]);
 
   const getScoreColor = (score) => {
     if (score >= 80) return "#4ade80";
@@ -234,11 +222,17 @@ export default function AIMatchPage() {
           </div>
         </div>
 
+        {error && (
+          <div className="mt-4 p-3 rounded-lg text-sm text-red-400 bg-red-500/10 border border-red-500/20">
+            {error}
+          </div>
+        )}
+
         {/* Analyze button */}
         <div className="mt-6 flex justify-center">
           <button
             id="ai-match-analyze-btn"
-            onClick={handleAnalyze}
+            onClick={() => handleAnalyze(false)}
             disabled={!canAnalyze || analyzing}
             className="btn-primary text-sm px-8 py-3 disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -305,7 +299,24 @@ export default function AIMatchPage() {
                 <p className="text-sm text-slate-300">
                   <span className="font-medium text-white">{result.resumeName}</span>
                 </p>
-                <p className="text-xs text-slate-500 mt-0.5">vs. {result.jobTitle}</p>
+                <p className="text-xs text-slate-500 mt-0.5">vs. {result.jobTitle}{result.company ? ` · ${result.company}` : ""}</p>
+                {result.summary && (
+                  <p className="text-xs text-slate-400 mt-3 max-w-xs leading-relaxed">{result.summary}</p>
+                )}
+                {result.mode === "rule-based" && (
+                  <p className="text-xs text-amber-400 mt-3 max-w-xs">
+                    Basic analysis: the AI service was unavailable, so this score uses rule-based matching.
+                  </p>
+                )}
+                {result.cached && (
+                  <button
+                    type="button"
+                    onClick={() => handleAnalyze(true)}
+                    className="text-xs text-violet-400 hover:text-violet-300 mt-2"
+                  >
+                    Saved result · re-run analysis
+                  </button>
+                )}
               </div>
             </div>
 
