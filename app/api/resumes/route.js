@@ -7,8 +7,8 @@ import {
   extractSkills,
   parseSections,
   chunkOffsets,
-  embedTexts,
 } from "../../lib/resumeProcessing";
+import { embedTexts } from "../../lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -96,7 +96,10 @@ export async function POST(request) {
     vectors = await embedTexts(chunks.map((c) => text.slice(c.start, c.end)));
   } catch (err) {
     console.error("Embedding failed:", err);
-    return NextResponse.json({ error: "Could not analyze the resume. Please try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.status === 429 ? "The AI service is busy. Please retry in a minute." : "Could not analyze the resume. Please try again." },
+      { status: err?.status === 429 ? 429 : 500 }
+    );
   }
 
   const { summary, ...restSections } = sections;

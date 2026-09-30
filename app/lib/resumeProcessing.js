@@ -1,4 +1,4 @@
-// Server-only helpers: PDF → text → skills/sections → chunks → embeddings.
+// Server-only helpers: PDF → text → skills/sections → chunks. (Embeddings live in gemini.js.)
 import { createHash } from "node:crypto";
 import { extractText, getDocumentProxy } from "unpdf";
 
@@ -9,8 +9,6 @@ export const LIMITS = {
   chunkChars: 800,
 };
 
-export const EMBEDDING_MODEL = "text-embedding-3-small";
-export const EMBEDDING_DIMS = 384; // must match halfvec(384) in the migration
 
 // ------------------------------------------------------------------ PDF text
 export async function pdfToText(buffer) {
@@ -141,27 +139,4 @@ export function chunkOffsets(text, size = LIMITS.chunkChars) {
     start = end;
   }
   return chunks;
-}
-
-// ---------------------------------------------------------------- embeddings
-// Hosted embeddings (OpenAI). text-embedding-3-small is shortened to 384 dims to
-// match the halfvec(384) column. Don't mix vectors from different models/dims.
-export async function embedTexts(texts) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("OPENAI_API_KEY is not set.");
-
-  const out = [];
-  for (let i = 0; i < texts.length; i += 64) {
-    const res = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts.slice(i, i + 64), dimensions: EMBEDDING_DIMS }),
-    });
-    if (!res.ok) throw new Error(`Embeddings API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const { data } = await res.json();
-    data.sort((x, y) => x.index - y.index);
-    // 4 decimals keeps the payload small; pgvector literal format.
-    for (const row of data) out.push(`[${row.embedding.map((v) => v.toFixed(4)).join(",")}]`);
-  }
-  return out;
 }
