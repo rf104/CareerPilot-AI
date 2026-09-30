@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { APPLICATION_STATUSES, STATUS_COLORS } from "../../lib/mockData";
 import {
-  getApplications,
-  addApplication,
+  fetchApplications,
+  createApplication,
   updateApplication,
   deleteApplication,
-  APPLICATION_STATUSES,
-  STATUS_COLORS,
-} from "../../lib/mockData";
+} from "../../lib/applicationsApi";
 
 const EMPTY_FORM = {
   company: "",
@@ -31,14 +30,18 @@ export default function ApplicationsPage() {
   const [toast, setToast] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    setApplications(getApplications());
-  }, []);
+  const [saving, setSaving] = useState(false);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  useEffect(() => {
+    fetchApplications()
+      .then(setApplications)
+      .catch((err) => showToast(err.message, "error"));
+  }, []);
 
   // Filtered & searched applications
   const filtered = applications.filter((app) => {
@@ -73,26 +76,37 @@ export default function ApplicationsPage() {
   };
 
   // Submit form
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingApp) {
-      const updated = updateApplication(editingApp.id, formData);
-      setApplications(updated);
-      showToast("Application updated successfully!");
-    } else {
-      const updated = addApplication(formData);
-      setApplications(updated);
-      showToast("Application added successfully!");
+    setSaving(true);
+    try {
+      if (editingApp) {
+        const saved = await updateApplication(editingApp.id, formData);
+        setApplications((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
+        showToast("Application updated successfully!");
+      } else {
+        const saved = await createApplication(formData);
+        setApplications((prev) => [saved, ...prev]);
+        showToast("Application added successfully!");
+      }
+      setModalOpen(false);
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setSaving(false);
     }
-    setModalOpen(false);
   };
 
   // Delete
-  const handleDelete = (id) => {
-    const updated = deleteApplication(id);
-    setApplications(updated);
+  const handleDelete = async (id) => {
     setConfirmDelete(null);
-    showToast("Application deleted.");
+    try {
+      await deleteApplication(id);
+      setApplications((prev) => prev.filter((x) => x.id !== id));
+      showToast("Application deleted.");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   };
 
   // Status counts
@@ -492,8 +506,8 @@ export default function ApplicationsPage() {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary text-sm px-6 py-2.5">
-                  <span>{editingApp ? "Save Changes" : "Add Application"}</span>
+                <button type="submit" disabled={saving} className="btn-primary text-sm px-6 py-2.5 disabled:opacity-50">
+                  <span>{saving ? "Saving..." : editingApp ? "Save Changes" : "Add Application"}</span>
                 </button>
               </div>
             </form>
